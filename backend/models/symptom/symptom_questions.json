@@ -1,0 +1,10 @@
+{
+  "fever": "Do you have high body temperature?",
+  "cough": "Are you experiencing cough?",
+  "headache": "Do you have headache?",
+  "skin_rash": "Do you have skin rash?",
+  "itching": "Do you feel itching?",
+  "fatigue": "Do you feel tired or fatigued?",
+  "vomiting": "Are you vomiting?",
+  "nausea": "Do you feel nausea?"
+}
