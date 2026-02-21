@@ -1,28 +1,57 @@
-# MEDCO – AI Symptom Checker with Voice Input
+# MEDCO – Symptom Disease Prediction (Member-1)
 
-MEDCO is an AI-powered healthcare web application that predicts possible diseases from user symptoms.  
-It supports both **text input** and **voice-based symptom detection** using machine learning.
+This module of MEDCO predicts possible diseases from user symptoms using machine learning.  
+It supports symptom input through text, chatbot, and voice.
 
-This module implements **Symptom Prediction + Voice Interface (Member-1 tasks)**.
+The system returns the top 3 most likely diseases with probability.
 
 ---
 
-## 🚀 Features
+## Features
 
-- Symptom → Disease prediction (ML model)
-- Voice-based symptom input 🎤
-- Top 3 disease predictions with probability
+- Symptom → disease prediction
+- Voice symptom input
 - Chatbot symptom detection
-- REST API endpoints
-- Flask backend + HTML frontend
+- REST API using Flask
+- Machine learning model (RandomForest)
 
 ---
 
-## 🧠 Machine Learning
+## How to Run
 
-- Algorithm: RandomForestClassifier
-- Dataset: `dataset_weighted.csv`
-- Multi-symptom binary encoding
-- ML probability + symptom overlap scoring
+1. Install requirements
+
+pip install -r requirements.txt
+
+2. Run backend
+
+cd backend  
+python app.py  
+
+3. Open in browser
+
+http://127.0.0.1:5000/voice
 
 ---
+
+## API Example
+(BETTER USE POSTMAN FOR THIS)
+POST /predict_symptom
+
+{
+  "symptoms": ["fever", "cough"]
+}
+
+---
+
+## Model
+
+The prediction model is trained on `dataset_weighted.csv`  
+and stored as `model.pkl`.
+
+---
+
+## Author
+
+Barath D  
+MEDCO Project – Member 1
