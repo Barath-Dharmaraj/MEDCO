@@ -1,56 +1,37 @@
 import pandas as pd
 import pickle
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import MultiLabelBinarizer
 
 # =============================
-# 1. LOAD RAW DATASET
+# LOAD DATASET
 # =============================
-df = pd.read_csv("dataset.csv")
+df = pd.read_csv("dataset_weighted.csv")
 
-# First column = disease
-diseases = df.iloc[:, 0]
+# group symptoms per disease
+grouped = df.groupby("Disease")["Symptom"].apply(list)
 
-# All symptom columns (text)
-symptom_cols = df.columns[1:]
-
-# =============================
-# 2. CREATE UNIQUE SYMPTOM LIST
-# =============================
-all_symptoms = set()
-
-for col in symptom_cols:
-    all_symptoms.update(df[col].dropna().unique())
-
-all_symptoms = sorted(all_symptoms)
+diseases = list(grouped.index)
+symptom_lists = list(grouped.values)
 
 # =============================
-# 3. CREATE BINARY MATRIX
+# MULTI-LABEL BINARIZER
 # =============================
-X = pd.DataFrame(0, index=df.index, columns=all_symptoms)
-
-for i in range(len(df)):
-    for col in symptom_cols:
-        symptom = df.iloc[i][col]
-        if pd.notna(symptom):
-            X.at[i, symptom] = 1
-
+mlb = MultiLabelBinarizer()
+X = mlb.fit_transform(symptom_lists)
 y = diseases
 
 # =============================
-# 4. SAVE SYMPTOM ORDER
+# TRAIN MODEL
 # =============================
-with open("symptoms_list.pkl", "wb") as f:
-    pickle.dump(all_symptoms, f)
-
-print("Symptoms order saved")
-
-# =============================
-# 5. TRAIN MODEL
-# =============================
-model = RandomForestClassifier()
+model = LogisticRegression(max_iter=3000)
 model.fit(X, y)
 
-with open("model.pkl", "wb") as f:
-    pickle.dump(model, f)
+# =============================
+# SAVE FILES
+# =============================
+pickle.dump(model, open("model.pkl", "wb"))
+pickle.dump(mlb, open("mlb.pkl", "wb"))
+pickle.dump(list(mlb.classes_), open("symptoms_list.pkl", "wb"))
 
-print("Model trained & saved")
+print("✅ MEDCO medical model trained")

@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import pickle
 import numpy as np
-import json
+import pandas as pd
 
 app = Flask(__name__)
 
@@ -9,108 +9,118 @@ app = Flask(__name__)
 # LOAD MODEL + FILES
 # =========================
 MODEL_PATH = "models/symptom/model.pkl"
+MLB_PATH = "models/symptom/mlb.pkl"
 SYMPTOMS_PATH = "models/symptom/symptoms_list.pkl"
-QUESTIONS_PATH = "models/symptom/symptom_questions.json"
+DATASET_PATH = "models/symptom/dataset_weighted.csv"
 
 model = pickle.load(open(MODEL_PATH, "rb"))
+mlb = pickle.load(open(MLB_PATH, "rb"))
 symptoms_list = pickle.load(open(SYMPTOMS_PATH, "rb"))
 
-# load chatbot questions
-with open(QUESTIONS_PATH, "r") as f:
-    symptom_questions = json.load(f)
+dataset = pd.read_csv(DATASET_PATH)
 
+# disease → symptoms map
+disease_map = dataset.groupby("Disease")["Symptom"].apply(list).to_dict()
 
 # =========================
-# HELPER: Convert symptoms → vector
+# HELPER FUNCTIONS
 # =========================
 def symptoms_to_vector(user_symptoms):
-    # normalize symptom list once
-    normalized_list = [s.strip().lower() for s in symptoms_list]
+    return mlb.transform([user_symptoms])
 
-    vector = [0] * len(symptoms_list)
+def jaccard(a, b):
+    a = set(a)
+    b = set(b)
+    return len(a & b) / len(a | b) if (a | b) else 0
 
-    for s in user_symptoms:
-        s_norm = s.strip().lower()
-        if s_norm in normalized_list:
-            idx = normalized_list.index(s_norm)
-            vector[idx] = 1
-
-    return np.array(vector).reshape(1, -1)
-
-# =========================
-# ROUTE: Get all symptoms
-# =========================
-@app.route("/symptoms", methods=["GET"])
-def get_symptoms():
-    return jsonify({"symptoms": symptoms_list})
-
-
-# =========================
-# ROUTE: Predict disease
-# =========================
-@app.route("/predict_symptom", methods=["POST"])
-def predict_symptom():
-    data = request.get_json()
-
-    if not data or "symptoms" not in data:
-        return jsonify({"error": "No symptoms provided"}), 400
-
-    user_symptoms = data["symptoms"]
-
+def predict_from_symptoms(user_symptoms):
     vec = symptoms_to_vector(user_symptoms)
-
     probs = model.predict_proba(vec)[0]
     classes = model.classes_
 
     results = []
-    for i in range(len(classes)):
+
+    for i, disease in enumerate(classes):
+        ml_prob = probs[i]
+        sim = jaccard(user_symptoms, disease_map.get(disease, []))
+
+        final = (0.6 * ml_prob) + (0.4 * sim)
+
         results.append({
-            "disease": classes[i],
-            "probability": float(round(probs[i], 3))
+            "disease": disease,
+            "probability": round(float(final), 3)
         })
 
     results = sorted(results, key=lambda x: x["probability"], reverse=True)
-
-    return jsonify({"predictions": results[:3]})
-
+    return results[:3]
 
 # =========================
-# ROUTE: Chatbot
+# ROUTES
 # =========================
-@app.route("/chat", methods=["POST"])
-def chat():
+
+@app.route("/voice")
+def voice():
+    return render_template("voice.html")
+
+@app.route("/symptoms", methods=["GET"])
+def get_symptoms():
+    return jsonify({"symptoms": symptoms_list})
+
+@app.route("/predict_symptom", methods=["POST"])
+def predict_symptom():
     data = request.get_json()
+    if not data or "symptoms" not in data:
+        return jsonify({"error": "No symptoms provided"}), 400
 
-    if not data or "message" not in data:
-        return jsonify({"reply": "Please describe your symptoms."})
+    user_symptoms = [s.strip().lower() for s in data["symptoms"]]
+    preds = predict_from_symptoms(user_symptoms)
 
-    text = data["message"].lower()
+    return jsonify({"predictions": preds})
+
+@app.route("/predict_voice", methods=["POST"])
+def predict_voice():
+    data = request.get_json()
+    if not data or "symptoms" not in data:
+        return jsonify({"error": "No speech text provided"}), 400
+
+    text = data["symptoms"].lower()
+    words = text.replace("_", " ").split()
 
     detected = []
     for s in symptoms_list:
-        if s in text:
+        s_words = s.replace("_", " ").split()
+        if any(w in words for w in s_words):
             detected.append(s)
 
     if not detected:
-        return jsonify({
-            "reply": "I could not detect symptoms. Please mention symptoms like fever, cough, headache."
-        })
+        return jsonify({"predictions": [], "message": "No symptoms detected"})
 
-    vec = symptoms_to_vector(detected)
-    probs = model.predict_proba(vec)[0]
-    classes = model.classes_
+    preds = predict_from_symptoms(detected)
+    return jsonify({"predictions": preds})
 
-    top_idx = np.argmax(probs)
-    disease = classes[top_idx]
-    prob = round(float(probs[top_idx]), 2)
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json()
+    if not data or "message" not in data:
+        return jsonify({"reply": "Please describe symptoms."})
 
-    reply = f"Based on your symptoms, you may have {disease} ({prob*100:.1f}%)."
+    text = data["message"].lower()
+
+    detected = [s for s in symptoms_list if s in text]
+
+    if not detected:
+        return jsonify({"reply": "Please mention symptoms like fever, cough, headache."})
+
+    preds = predict_from_symptoms(detected)
+    top = preds[0]
+
+    reply = f"Based on symptoms, possible {top['disease']} ({top['probability']*100:.1f}%)."
 
     return jsonify({
         "reply": reply,
-        "detected_symptoms": detected
+        "detected_symptoms": detected,
+        "predictions": preds
     })
-
 
 # =========================
 # RUN
